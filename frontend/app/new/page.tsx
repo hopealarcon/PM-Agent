@@ -106,8 +106,8 @@ export default function NewProjectPage() {
       setAcceptedEpics(new Set(data.epics.map((e: Epic) => e.title)));
       setRetry(null);
       setStep("scope-epics");
-    } catch {
-      setError("Error generando las areas de trabajo.");
+    } catch (e) {
+      setError("Error generando las areas de trabajo: " + (e instanceof Error ? e.message : String(e)));
       setRetry(() => () => loadEpics(clarifications));
     }
     setLoading(false);
@@ -136,8 +136,8 @@ export default function NewProjectPage() {
       setCurrentEpicIndex(0);
       setRetry(null);
       setStep("scope-features");
-    } catch {
-      setError("Error generando features.");
+    } catch (e) {
+      setError("Error generando features: " + (e instanceof Error ? e.message : String(e)));
       setRetry(() => () => confirmEpics());
     }
     setLoading(false);
@@ -174,8 +174,8 @@ export default function NewProjectPage() {
           setAcceptedFeatures(new Set(data.features.map((f: Feature) => f.title)));
           setCurrentEpicIndex(nextIndex);
           setRetry(null);
-        } catch {
-          setError("Error generando features.");
+        } catch (e) {
+          setError("Error generando features: " + (e instanceof Error ? e.message : String(e)));
           setRetry(() => () => loadNextFeatures());
         }
         setLoading(false);
