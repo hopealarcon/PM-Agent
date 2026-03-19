@@ -8,4 +8,7 @@ load_dotenv()
 def get_client() -> Client:
     url = os.environ["SUPABASE_URL"]
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    return create_client(url, key)
+    client = create_client(url, key)
+    # Force HTTP/1.1 to avoid HTTP/2 StreamReset issues
+    client.postgrest.session.headers.update({"connection": "close"})
+    return client

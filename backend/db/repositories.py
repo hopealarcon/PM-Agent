@@ -1,11 +1,25 @@
+import time
 from db.client import get_client
 from schemas.plan import Session, Plan, ScopeDecision
 
 
+def _with_retry(fn, retries=2):
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt < retries - 1 and "RemoteProtocolError" in str(type(e).__name__) or "StreamReset" in str(e):
+                time.sleep(0.5)
+                continue
+            raise
+
+
 def save_project(name: str) -> str:
-    client = get_client()
-    res = client.table("projects").insert({"name": name, "status": "active"}).execute()
-    return res.data[0]["id"]
+    def fn():
+        client = get_client()
+        res = client.table("projects").insert({"name": name, "status": "active"}).execute()
+        return res.data[0]["id"]
+    return _with_retry(fn)
 
 
 def save_session(project_id: str, session: Session) -> str:
@@ -90,9 +104,11 @@ def save_plan(project_id: str, plan: Plan, version: int = 1) -> str:
 
 
 def get_projects() -> list[dict]:
-    client = get_client()
-    res = client.table("projects").select("id, name, status, created_at").order("created_at", desc=True).execute()
-    return res.data
+    def fn():
+        client = get_client()
+        res = client.table("projects").select("id, name, status, created_at").order("created_at", desc=True).execute()
+        return res.data
+    return _with_retry(fn)
 
 
 def get_plan(project_id: str) -> dict | None:

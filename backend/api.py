@@ -145,7 +145,7 @@ def generate_and_save(req: GeneratePlanRequest):
     prompt = build_plan_prompt(req.brief, req.clarifications, req.accepted_scope)
     response = claude.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=16000,
         system=PLAN_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
     )
