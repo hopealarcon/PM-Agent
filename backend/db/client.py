@@ -17,7 +17,8 @@ class SupabaseClient:
 
     def insert(self, table: str, data: dict) -> dict:
         res = requests.post(f"{self.base_url}/{table}", json=data, headers=self.headers)
-        res.raise_for_status()
+        if not res.ok:
+            raise Exception(f"{res.status_code} on {table}: {res.text}")
         return res.json()[0]
 
     def insert_many(self, table: str, data: list) -> list:
