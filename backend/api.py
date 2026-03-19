@@ -26,7 +26,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+claude = anthropic.Anthropic(api_key="".join(os.environ["ANTHROPIC_API_KEY"].split()))
 
 
 # --- Request/Response models ---

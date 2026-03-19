@@ -40,6 +40,6 @@ class SupabaseClient:
 
 
 def get_client() -> SupabaseClient:
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    url = os.environ["SUPABASE_URL"].strip()
+    key = "".join(os.environ["SUPABASE_SERVICE_ROLE_KEY"].split())
     return SupabaseClient(url, key)
