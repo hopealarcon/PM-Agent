@@ -73,3 +73,16 @@ CREATE TABLE IF NOT EXISTS milestones (
   target_date DATE,
   gate_criteria JSONB DEFAULT '[]'
 );
+
+CREATE TABLE IF NOT EXISTS release_plans (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  releases JSONB NOT NULL DEFAULT '[]',
+  resources JSONB DEFAULT '[]',
+  start_date TEXT,
+  schedule_entries JSONB DEFAULT '[]',
+  go_live_dates JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+GRANT ALL ON release_plans TO anon, authenticated, service_role;

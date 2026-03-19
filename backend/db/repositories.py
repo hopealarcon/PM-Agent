@@ -119,6 +119,36 @@ def get_projects() -> list[dict]:
     return client.select("projects", "id,name,status,created_at", order="created_at.desc")
 
 
+def save_release_plan(name: str, releases: list, resources: list, start_date: str, entries: list, go_live_dates: dict) -> str:
+    client = get_client()
+    row = client.insert("release_plans", {
+        "name": name,
+        "releases": json.dumps(releases),
+        "resources": json.dumps(resources),
+        "start_date": start_date,
+        "schedule_entries": json.dumps(entries),
+        "go_live_dates": json.dumps(go_live_dates),
+    })
+    return row["id"]
+
+
+def get_release_plan(plan_id: str) -> dict | None:
+    client = get_client()
+    rows = client.select("release_plans", filters={"id": f"eq.{plan_id}"}, limit=1)
+    if not rows:
+        return None
+    row = rows[0]
+    for field in ["releases", "resources", "schedule_entries", "go_live_dates"]:
+        if isinstance(row.get(field), str):
+            row[field] = json.loads(row[field])
+    return row
+
+
+def get_release_plans() -> list[dict]:
+    client = get_client()
+    return client.select("release_plans", "id,name,created_at", order="created_at.desc")
+
+
 def get_plan(project_id: str) -> dict | None:
     client = get_client()
 
