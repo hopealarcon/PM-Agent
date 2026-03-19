@@ -6,13 +6,15 @@ testing, deployment, logging, seguridad basica.
 
 Habla en español. Se directo y profesional."""
 
-def build_epics_prompt(brief: str, clarifications: list[dict]) -> str:
+def build_epics_prompt(brief: str, clarifications: list[dict], document_context: str = "") -> str:
     clarifications_text = ""
     for c in clarifications:
         clarifications_text += f"\nP: {c['questions']}\nR: {c['answer']}\n"
 
-    return f"""Brief: {brief}
+    doc_section = f"\nDocumento de requerimientos:\n{document_context}\n" if document_context else ""
 
+    return f"""Brief: {brief}
+{doc_section}
 Clarificaciones:{clarifications_text}
 
 Propone las areas de trabajo principales (epics) para este proyecto.
@@ -27,12 +29,15 @@ Al final agrega:
 IMPLICITOS: lista los epics que agregaste por ser buenas practicas y no porque el cliente los menciono."""
 
 
-def build_features_prompt(epic_title: str, brief: str, clarifications: list[dict]) -> str:
+def build_features_prompt(epic_title: str, brief: str, clarifications: list[dict], document_context: str = "") -> str:
     clarifications_text = ""
     for c in clarifications:
         clarifications_text += f"\nP: {c['questions']}\nR: {c['answer']}\n"
 
+    doc_section = f"\nDocumento de requerimientos:\n{document_context}\n" if document_context else ""
+
     return f"""Brief: {brief}
+{doc_section}
 Clarificaciones:{clarifications_text}
 
 Para el epic "{epic_title}", lista las features especificas.

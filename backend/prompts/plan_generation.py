@@ -8,15 +8,16 @@ Propones milestones alcanzables basados en el scope.
 
 Habla en español. Se directo y profesional."""
 
-def build_plan_prompt(brief: str, clarifications: list[dict], accepted_scope: dict) -> str:
+def build_plan_prompt(brief: str, clarifications: list[dict], accepted_scope: dict, document_context: str = "") -> str:
     clarifications_text = ""
     for c in clarifications:
         clarifications_text += f"\nP: {c['questions']}\nR: {c['answer']}\n"
 
     scope_text = json.dumps(accepted_scope, ensure_ascii=False, indent=2)
+    doc_section = f"\nDocumento de requerimientos:\n{document_context}\n" if document_context else ""
 
     return f"""Brief: {brief}
-
+{doc_section}
 Clarificaciones:{clarifications_text}
 
 Scope aprobado:

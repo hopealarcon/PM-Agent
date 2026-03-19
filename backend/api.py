@@ -43,11 +43,13 @@ class ClarifyRequest(BaseModel):
 class ProposeEpicsRequest(BaseModel):
     brief: str
     clarifications: list[dict]
+    document_context: Optional[str] = None
 
 class ProposeFeaturesRequest(BaseModel):
     epic_title: str
     brief: str
     clarifications: list[dict]
+    document_context: Optional[str] = None
 
 class GeneratePlanRequest(BaseModel):
     name: str
@@ -55,6 +57,7 @@ class GeneratePlanRequest(BaseModel):
     clarifications: list[dict]
     accepted_scope: dict
     scope_decisions: list[dict]
+    document_context: Optional[str] = None
 
 
 # --- Endpoints ---
@@ -93,7 +96,7 @@ def clarify(req: ClarifyRequest):
 
 @app.post("/api/scope/epics")
 def propose_epics(req: ProposeEpicsRequest):
-    prompt = build_epics_prompt(req.brief, req.clarifications)
+    prompt = build_epics_prompt(req.brief, req.clarifications, req.document_context or "")
     response = claude.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
@@ -118,7 +121,7 @@ def propose_epics(req: ProposeEpicsRequest):
 
 @app.post("/api/scope/features")
 def propose_features(req: ProposeFeaturesRequest):
-    prompt = build_features_prompt(req.epic_title, req.brief, req.clarifications)
+    prompt = build_features_prompt(req.epic_title, req.brief, req.clarifications, req.document_context or "")
     response = claude.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
@@ -144,7 +147,7 @@ def propose_features(req: ProposeFeaturesRequest):
 @app.post("/api/projects")
 def generate_and_save(req: GeneratePlanRequest):
     try:
-        prompt = build_plan_prompt(req.brief, req.clarifications, req.accepted_scope)
+        prompt = build_plan_prompt(req.brief, req.clarifications, req.accepted_scope, req.document_context or "")
         response = claude.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=16000,
@@ -211,7 +214,7 @@ async def extract_document(file: UploadFile = File(...)):
         messages=[{"role": "user", "content": f"Documento:\n\n{text}"}]
     )
     brief = response.content[0].text.strip()
-    return {"brief": brief}
+    return {"brief": brief, "document_text": text}
 
 
 @app.get("/health")

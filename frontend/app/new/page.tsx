@@ -23,6 +23,7 @@ export default function NewProjectPage() {
   const [brief, setBrief] = useState("");
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [documentContent, setDocumentContent] = useState("");
 
   // Clarification
   const [history, setHistory] = useState<{ questions: string; answer: string }[]>([]);
@@ -52,7 +53,8 @@ export default function NewProjectPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Error al procesar el archivo");
-      setBrief(data.brief);
+      if (!brief.trim()) setBrief(data.brief);
+      setDocumentContent(data.document_text || "");
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Error al procesar el archivo");
     }
@@ -120,7 +122,7 @@ export default function NewProjectPage() {
       const res = await fetch(`${API}/api/scope/epics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief, clarifications }),
+        body: JSON.stringify({ brief, clarifications, document_context: documentContent || undefined }),
       });
       const data = await res.json();
       setProposedEpics(data.epics);
@@ -149,7 +151,7 @@ export default function NewProjectPage() {
       const res = await fetch(`${API}/api/scope/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ epic_title: accepted[0].title, brief, clarifications: history }),
+        body: JSON.stringify({ epic_title: accepted[0].title, brief, clarifications: history, document_context: documentContent || undefined }),
       });
       const data = await res.json();
       setProposedFeatures(data.features);
@@ -188,7 +190,7 @@ export default function NewProjectPage() {
           const res = await fetch(`${API}/api/scope/features`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ epic_title: acceptedEpicsList[nextIndex].title, brief, clarifications: history }),
+            body: JSON.stringify({ epic_title: acceptedEpicsList[nextIndex].title, brief, clarifications: history, document_context: documentContent || undefined }),
           });
           const data = await res.json();
           setProposedFeatures(data.features);
@@ -220,6 +222,7 @@ export default function NewProjectPage() {
           clarifications: history,
           accepted_scope: scope,
           scope_decisions: decisions,
+          document_context: documentContent || undefined,
         }),
       });
       const data = await res.json();
