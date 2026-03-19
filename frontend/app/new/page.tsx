@@ -21,6 +21,8 @@ export default function NewProjectPage() {
   // Brief
   const [name, setName] = useState("");
   const [brief, setBrief] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   // Clarification
   const [history, setHistory] = useState<{ questions: string; answer: string }[]>([]);
@@ -37,6 +39,25 @@ export default function NewProjectPage() {
   const [acceptedFeatures, setAcceptedFeatures] = useState<Set<string>>(new Set());
   const [acceptedScope, setAcceptedScope] = useState<Record<string, Feature[]>>({});
   const [allDecisions, setAllDecisions] = useState<ScopeDecision[]>([]);
+
+  async function handleFileUpload(file: File) {
+    setUploadLoading(true);
+    setUploadError("");
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${API}/api/extract-document`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Error al procesar el archivo");
+      setBrief(data.brief);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Error al procesar el archivo");
+    }
+    setUploadLoading(false);
+  }
 
   async function startClarification() {
     if (!name.trim() || !brief.trim()) return;
@@ -260,14 +281,41 @@ export default function NewProjectPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion del proyecto</label>
-              <textarea
-                value={brief}
-                onChange={e => setBrief(e.target.value)}
-                placeholder="Describe que quieres construir, para quien, y cualquier detalle relevante..."
-                rows={5}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Descripcion del proyecto</label>
+                <label className="cursor-pointer text-xs text-indigo-600 font-medium hover:text-indigo-700 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  {uploadLoading ? "Procesando..." : "Subir PRD / documento"}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt"
+                    className="hidden"
+                    disabled={uploadLoading}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {uploadError && <p className="text-xs text-red-500 mb-1">{uploadError}</p>}
+              {uploadLoading && (
+                <div className="w-full border border-indigo-200 bg-indigo-50 rounded-lg px-3 py-6 text-sm text-center text-indigo-500 mb-0">
+                  Extrayendo informacion del documento...
+                </div>
+              )}
+              {!uploadLoading && (
+                <textarea
+                  value={brief}
+                  onChange={e => setBrief(e.target.value)}
+                  placeholder="Describe que quieres construir, para quien, y cualquier detalle relevante... o sube un documento PRD arriba."
+                  rows={5}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              )}
             </div>
             <button
               onClick={startClarification}

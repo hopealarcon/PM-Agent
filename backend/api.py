@@ -1,8 +1,9 @@
 import os
 import json
 import re
+import io
 import anthropic
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -177,6 +178,40 @@ def generate_and_save(req: GeneratePlanRequest):
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     return {"project_id": project_id}
+
+
+@app.post("/api/extract-document")
+async def extract_document(file: UploadFile = File(...)):
+    content = await file.read()
+    filename = file.filename or ""
+
+    try:
+        if filename.lower().endswith(".pdf"):
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif filename.lower().endswith(".docx"):
+            import docx
+            doc = docx.Document(io.BytesIO(content))
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        else:
+            text = content.decode("utf-8", errors="ignore")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"No se pudo leer el archivo: {e}")
+
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="El archivo no contiene texto extraible")
+
+    text = text[:12000]
+
+    response = claude.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        system="Eres un asistente de product management. Tu tarea es leer un documento de requerimientos y generar un resumen ejecutivo en español que sirva como brief para un proyecto de software. El brief debe incluir: objetivo del proyecto, usuarios objetivo, principales funcionalidades, y cualquier restriccion o contexto relevante. Responde SOLO con el brief, sin titulos ni formato markdown.",
+        messages=[{"role": "user", "content": f"Documento:\n\n{text}"}]
+    )
+    brief = response.content[0].text.strip()
+    return {"brief": brief}
 
 
 @app.get("/health")
