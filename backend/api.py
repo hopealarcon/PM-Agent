@@ -142,31 +142,39 @@ def propose_features(req: ProposeFeaturesRequest):
 
 @app.post("/api/projects")
 def generate_and_save(req: GeneratePlanRequest):
-    prompt = build_plan_prompt(req.brief, req.clarifications, req.accepted_scope)
-    response = claude.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=16000,
-        system=PLAN_SYSTEM,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    text = response.content[0].text.strip()
-    text = re.sub(r'^```[a-z]*\n?', '', text)
-    text = re.sub(r'\n?```$', '', text)
+    try:
+        prompt = build_plan_prompt(req.brief, req.clarifications, req.accepted_scope)
+        response = claude.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=16000,
+            system=PLAN_SYSTEM,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = response.content[0].text.strip()
+        text = re.sub(r'^```[a-z]*\n?', '', text)
+        text = re.sub(r'\n?```$', '', text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Claude error: {e}")
 
-    plan = Plan(**json.loads(text))
+    try:
+        plan = Plan(**json.loads(text))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"JSON parse error: {e} | raw: {text[:300]}")
 
-    session = Session(
-        project_name=req.name,
-        brief_raw=req.brief,
-        clarification_history=req.clarifications,
-        scope_decisions=[ScopeDecision(**d) for d in req.scope_decisions],
-        plan=plan
-    )
-
-    project_id = repositories.save_project(req.name)
-    repositories.save_session(project_id, session)
-    repositories.save_scope_decisions(project_id, session.scope_decisions)
-    repositories.save_plan(project_id, plan)
+    try:
+        session = Session(
+            project_name=req.name,
+            brief_raw=req.brief,
+            clarification_history=req.clarifications,
+            scope_decisions=[ScopeDecision(**d) for d in req.scope_decisions],
+            plan=plan
+        )
+        project_id = repositories.save_project(req.name)
+        repositories.save_session(project_id, session)
+        repositories.save_scope_decisions(project_id, session.scope_decisions)
+        repositories.save_plan(project_id, plan)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     return {"project_id": project_id}
 
