@@ -160,21 +160,27 @@ export default function NewProjectPage() {
 
     const nextIndex = currentEpicIndex + 1;
     if (nextIndex < acceptedEpicsList.length) {
-      setLoading(true);
-      try {
-        const res = await fetch(`${API}/api/scope/features`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ epic_title: acceptedEpicsList[nextIndex].title, brief, clarifications: history }),
-        });
-        const data = await res.json();
-        setProposedFeatures(data.features);
-        setAcceptedFeatures(new Set(data.features.map((f: Feature) => f.title)));
-        setCurrentEpicIndex(nextIndex);
-      } catch {
-        setError("Error generando features.");
-      }
-      setLoading(false);
+      const loadNextFeatures = async () => {
+        setLoading(true);
+        setError("");
+        try {
+          const res = await fetch(`${API}/api/scope/features`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ epic_title: acceptedEpicsList[nextIndex].title, brief, clarifications: history }),
+          });
+          const data = await res.json();
+          setProposedFeatures(data.features);
+          setAcceptedFeatures(new Set(data.features.map((f: Feature) => f.title)));
+          setCurrentEpicIndex(nextIndex);
+          setRetry(null);
+        } catch {
+          setError("Error generando features.");
+          setRetry(() => () => loadNextFeatures());
+        }
+        setLoading(false);
+      };
+      await loadNextFeatures();
     } else {
       await generatePlan(newScope, newDecisions);
     }
