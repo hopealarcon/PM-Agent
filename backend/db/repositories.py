@@ -1,3 +1,4 @@
+import json
 from db.client import get_client
 from schemas.plan import Session, Plan, ScopeDecision
 
@@ -87,6 +88,30 @@ def save_plan(project_id: str, plan: Plan, version: int = 1) -> str:
         })
 
     return plan_id
+
+
+def save_timeline(project_id: str, resources: list[dict], start_date: str, entries: list[dict]) -> str:
+    client = get_client()
+    row = client.insert("timelines", {
+        "project_id": project_id,
+        "resources": json.dumps(resources),
+        "start_date": start_date,
+        "entries": json.dumps(entries),
+    })
+    return row["id"]
+
+
+def get_timeline(project_id: str) -> dict | None:
+    client = get_client()
+    rows = client.select("timelines", filters={"project_id": f"eq.{project_id}"}, order="created_at.desc", limit=1)
+    if not rows:
+        return None
+    row = rows[0]
+    if isinstance(row.get("resources"), str):
+        row["resources"] = json.loads(row["resources"])
+    if isinstance(row.get("entries"), str):
+        row["entries"] = json.loads(row["entries"])
+    return row
 
 
 def get_projects() -> list[dict]:

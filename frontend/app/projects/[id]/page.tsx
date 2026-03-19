@@ -1,4 +1,5 @@
 import Link from "next/link";
+import TimelineView from "./TimelineView";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -21,9 +22,23 @@ async function getPlan(id: string) {
   return res.json();
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+async function getTimeline(id: string) {
+  try {
+    const res = await fetch(`${API}/api/timeline/${id}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export default async function ProjectPage({ params, searchParams }: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
-  const plan = await getPlan(id);
+  const { tab = "plan" } = await searchParams;
+  const [plan, timeline] = await Promise.all([getPlan(id), getTimeline(id)]);
 
   if (!plan) {
     return (
@@ -40,9 +55,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ) ?? []
   ).reduce((a: number, b: number) => a + b, 0) ?? 0;
 
+  const hasTimeline = timeline?.entries?.length > 0;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">← Proyectos</Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-1">Plan del proyecto</h1>
@@ -52,109 +69,142 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* Epics */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Epics y features</h2>
-        <div className="space-y-4">
-          {plan.epics?.map((epic: any) => {
-            const epicHours = epic.features?.flatMap((f: any) => f.tasks?.map((t: any) => t.estimated_hours || 0) ?? []).reduce((a: number, b: number) => a + b, 0) ?? 0;
-            return (
-              <div key={epic.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor[epic.priority] || "bg-gray-50 text-gray-500"}`}>
-                      {epic.priority}
-                    </span>
-                    <h3 className="font-semibold text-gray-900">{epic.title}</h3>
-                  </div>
-                  <span className="text-sm text-gray-400">{epicHours}h</span>
-                </div>
-                <div className="divide-y divide-gray-50">
-                  {epic.features?.map((feat: any) => {
-                    const featHours = feat.tasks?.reduce((a: number, t: any) => a + (t.estimated_hours || 0), 0) ?? 0;
-                    return (
-                      <div key={feat.id} className="px-5 py-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-800">{feat.title}</span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${priorityColor[feat.priority] || ""}`}>
-                                {feat.priority}
-                              </span>
-                            </div>
-                            {feat.description && <p className="text-xs text-gray-500 mt-0.5">{feat.description}</p>}
-                            {feat.tasks?.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                {feat.tasks.map((task: any) => (
-                                  <div key={task.id} className="flex items-center gap-2 text-xs text-gray-500">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-                                    <span>{task.title}</span>
-                                    {task.role && <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-400">{task.role}</span>}
-                                    {task.estimated_hours && <span className="ml-auto">{task.estimated_hours}h</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          {featHours > 0 && <span className="text-sm text-gray-400 flex-shrink-0">{featHours}h</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <Link
+          href={`/projects/${id}?tab=plan`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-colors ${tab === "plan" ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          Plan
+        </Link>
+        <Link
+          href={`/projects/${id}?tab=timeline`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-colors ${tab === "timeline" ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          Timeline {hasTimeline ? "" : <span className="text-xs text-gray-300 ml-1">—</span>}
+        </Link>
+      </div>
 
-      {/* Milestones */}
-      {plan.milestones?.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Milestones</h2>
-          <div className="grid gap-3">
-            {plan.milestones.map((m: any) => (
-              <div key={m.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium text-gray-900">{m.name}</h3>
-                  {m.target_date && <span className="text-sm text-gray-400">{m.target_date}</span>}
-                </div>
-                {m.gate_criteria?.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {m.gate_criteria.map((c: string, i: number) => (
-                      <li key={i} className="text-xs text-gray-500 flex items-center gap-2">
-                        <span className="text-green-500">✓</span> {c}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+      {/* Tab: Plan */}
+      {tab !== "timeline" && (
+        <>
+          {/* Epics */}
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Epics y features</h2>
+            <div className="space-y-4">
+              {plan.epics?.map((epic: any) => {
+                const epicHours = epic.features?.flatMap((f: any) => f.tasks?.map((t: any) => t.estimated_hours || 0) ?? []).reduce((a: number, b: number) => a + b, 0) ?? 0;
+                return (
+                  <div key={epic.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor[epic.priority] || "bg-gray-50 text-gray-500"}`}>
+                          {epic.priority}
+                        </span>
+                        <h3 className="font-semibold text-gray-900">{epic.title}</h3>
+                      </div>
+                      <span className="text-sm text-gray-400">{epicHours}h</span>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {epic.features?.map((feat: any) => {
+                        const featHours = feat.tasks?.reduce((a: number, t: any) => a + (t.estimated_hours || 0), 0) ?? 0;
+                        return (
+                          <div key={feat.id} className="px-5 py-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-800">{feat.title}</span>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${priorityColor[feat.priority] || ""}`}>
+                                    {feat.priority}
+                                  </span>
+                                </div>
+                                {feat.description && <p className="text-xs text-gray-500 mt-0.5">{feat.description}</p>}
+                                {feat.tasks?.length > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                    {feat.tasks.map((task: any) => (
+                                      <div key={task.id} className="flex items-center gap-2 text-xs text-gray-500">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+                                        <span>{task.title}</span>
+                                        {task.role && <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-400">{task.role}</span>}
+                                        {task.estimated_hours && <span className="ml-auto">{task.estimated_hours}h</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {featHours > 0 && <span className="text-sm text-gray-400 flex-shrink-0">{featHours}h</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Milestones */}
+          {plan.milestones?.length > 0 && (
+            <section className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Milestones</h2>
+              <div className="grid gap-3">
+                {plan.milestones.map((m: any) => (
+                  <div key={m.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900">{m.name}</h3>
+                      {m.target_date && <span className="text-sm text-gray-400">{m.target_date}</span>}
+                    </div>
+                    {m.gate_criteria?.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {m.gate_criteria.map((c: string, i: number) => (
+                          <li key={i} className="text-xs text-gray-500 flex items-center gap-2">
+                            <span className="text-green-500">✓</span> {c}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
+          )}
+
+          {/* Risks */}
+          {plan.risks?.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Riesgos</h2>
+              <div className="grid gap-3">
+                {plan.risks.map((r: any) => (
+                  <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-medium text-gray-900">{r.title}</h3>
+                        {r.mitigation && <p className="text-sm text-gray-500 mt-1">{r.mitigation}</p>}
+                      </div>
+                      <div className="text-xs flex-shrink-0 text-right">
+                        <p>Prob: <span className={`font-medium ${riskColor[r.probability]}`}>{r.probability}</span></p>
+                        <p>Impacto: <span className={`font-medium ${riskColor[r.impact]}`}>{r.impact}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
-      {/* Risks */}
-      {plan.risks?.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Riesgos</h2>
-          <div className="grid gap-3">
-            {plan.risks.map((r: any) => (
-              <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="font-medium text-gray-900">{r.title}</h3>
-                    {r.mitigation && <p className="text-sm text-gray-500 mt-1">{r.mitigation}</p>}
-                  </div>
-                  <div className="text-xs flex-shrink-0 text-right">
-                    <p>Prob: <span className={`font-medium ${riskColor[r.probability]}`}>{r.probability}</span></p>
-                    <p>Impacto: <span className={`font-medium ${riskColor[r.impact]}`}>{r.impact}</span></p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+      {/* Tab: Timeline */}
+      {tab === "timeline" && (
+        hasTimeline
+          ? <TimelineView entries={timeline.entries} resources={timeline.resources} start_date={timeline.start_date} />
+          : (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <p className="text-gray-400 text-sm mb-3">No se ha generado un timeline para este proyecto aun.</p>
+              <Link href="/" className="text-indigo-600 text-sm hover:underline">Volver al inicio</Link>
+            </div>
+          )
       )}
     </div>
   );

@@ -14,6 +14,7 @@ from schemas.plan import Session, ScopeDecision, Decision, Plan
 from prompts.clarification import SYSTEM_PROMPT as CLARIFY_SYSTEM, build_clarification_prompt
 from prompts.scope_review import SYSTEM_PROMPT as SCOPE_SYSTEM, build_epics_prompt, build_features_prompt
 from prompts.plan_generation import SYSTEM_PROMPT as PLAN_SYSTEM, build_plan_prompt
+from prompts.timeline import build_timeline_prompt
 
 load_dotenv()
 
@@ -58,6 +59,10 @@ class GeneratePlanRequest(BaseModel):
     accepted_scope: dict
     scope_decisions: list[dict]
     document_context: Optional[str] = None
+
+class TimelineRequest(BaseModel):
+    resources: list[dict]
+    start_date: str
 
 
 # --- Endpoints ---
@@ -181,6 +186,43 @@ def generate_and_save(req: GeneratePlanRequest):
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     return {"project_id": project_id}
+
+
+@app.post("/api/timeline/{project_id}")
+def generate_timeline(project_id: str, req: TimelineRequest):
+    plan = repositories.get_plan(project_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    prompt = build_timeline_prompt(plan, req.resources, req.start_date)
+    try:
+        response = claude.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=8000,
+            system="Eres un project manager experto en planificacion de recursos y timelines. Asignas trabajo considerando dependencias, capacidad del equipo y prioridades. Respondes siempre en JSON valido.",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = response.content[0].text.strip()
+        text = re.sub(r'^```[a-z]*\n?', '', text)
+        text = re.sub(r'\n?```$', '', text)
+        data = json.loads(text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando timeline: {e}")
+
+    try:
+        repositories.save_timeline(project_id, req.resources, req.start_date, data["entries"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+
+    return {"entries": data["entries"]}
+
+
+@app.get("/api/timeline/{project_id}")
+def get_timeline(project_id: str):
+    timeline = repositories.get_timeline(project_id)
+    if not timeline:
+        return {"entries": [], "resources": [], "start_date": None}
+    return timeline
 
 
 @app.post("/api/extract-document")

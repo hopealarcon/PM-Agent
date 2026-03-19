@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-type Step = "brief" | "clarify" | "scope-epics" | "scope-features" | "generating" | "done";
+type Step = "brief" | "clarify" | "scope-epics" | "scope-features" | "generating" | "resources" | "generating-timeline" | "done";
 
 interface Epic { key: string; title: string; description: string; }
 interface Feature { title: string; description: string; priority: string; }
@@ -33,6 +33,11 @@ export default function NewProjectPage() {
   // Scope - epics
   const [proposedEpics, setProposedEpics] = useState<Epic[]>([]);
   const [acceptedEpics, setAcceptedEpics] = useState<Set<string>>(new Set());
+
+  // Plan + timeline
+  const [savedProjectId, setSavedProjectId] = useState("");
+  const [resources, setResources] = useState<{ name: string; role: string }[]>([{ name: "", role: "fullstack" }]);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   // Scope - features
   const [currentEpicIndex, setCurrentEpicIndex] = useState(0);
@@ -226,11 +231,33 @@ export default function NewProjectPage() {
         }),
       });
       const data = await res.json();
-      router.push(`/projects/${data.project_id}`);
+      setSavedProjectId(data.project_id);
+      setStep("resources");
     } catch (e) {
       setError("Error generando el plan: " + (e instanceof Error ? e.message : String(e)));
       setRetry(() => () => generatePlan(scope, decisions));
       setStep("scope-features");
+    }
+  }
+
+  async function generateTimeline() {
+    const validResources = resources.filter(r => r.name.trim());
+    if (!validResources.length) return;
+    setStep("generating-timeline");
+    setError("");
+    try {
+      const res = await fetch(`${API}/api/timeline/${savedProjectId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resources: validResources, start_date: startDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Error");
+      router.push(`/projects/${savedProjectId}`);
+    } catch (e) {
+      setError("Error generando el timeline: " + (e instanceof Error ? e.message : String(e)));
+      setRetry(() => () => generateTimeline());
+      setStep("resources");
     }
   }
 
@@ -240,15 +267,15 @@ export default function NewProjectPage() {
   return (
     <div className="max-w-2xl mx-auto">
       {/* Progress */}
-      <div className="flex items-center gap-2 mb-8 text-sm text-gray-400">
-        {["Brief", "Clarificacion", "Epics", "Features", "Generando"].map((label, i) => {
-          const steps: Step[] = ["brief", "clarify", "scope-epics", "scope-features", "generating"];
+      <div className="flex items-center gap-2 mb-8 text-sm text-gray-400 flex-wrap">
+        {["Brief", "Clarificacion", "Epics", "Features", "Plan", "Recursos", "Timeline"].map((label, i) => {
+          const steps: Step[] = ["brief", "clarify", "scope-epics", "scope-features", "generating", "resources", "generating-timeline"];
           const active = steps.indexOf(step) >= i;
           return (
             <span key={label} className="flex items-center gap-2">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${active ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-400"}`}>{i + 1}</span>
               <span className={active ? "text-gray-700 font-medium" : ""}>{label}</span>
-              {i < 4 && <span className="text-gray-300">→</span>}
+              {i < 6 && <span className="text-gray-300">→</span>}
             </span>
           );
         })}
@@ -451,12 +478,103 @@ export default function NewProjectPage() {
         </div>
       )}
 
-      {/* Step: Generating */}
+      {/* Step: Generating Plan */}
       {step === "generating" && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900">Generando plan...</h2>
           <p className="text-gray-500 mt-2 text-sm">El agente esta analizando el scope y creando el plan detallado</p>
+        </div>
+      )}
+
+      {/* Step: Resources */}
+      {step === "resources" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold mb-1">Recursos del equipo</h2>
+          <p className="text-gray-500 text-sm mb-6">Dime con quien cuentas y cuando empezamos para armar el timeline</p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Equipo</label>
+                <button
+                  onClick={() => setResources([...resources, { name: "", role: "fullstack" }])}
+                  className="text-xs text-indigo-600 font-medium hover:text-indigo-700"
+                >
+                  + Agregar persona
+                </button>
+              </div>
+              <div className="space-y-2">
+                {resources.map((r, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <input
+                      value={r.name}
+                      onChange={e => {
+                        const next = [...resources];
+                        next[i] = { ...next[i], name: e.target.value };
+                        setResources(next);
+                      }}
+                      placeholder="Nombre"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <select
+                      value={r.role}
+                      onChange={e => {
+                        const next = [...resources];
+                        next[i] = { ...next[i], role: e.target.value };
+                        setResources(next);
+                      }}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    >
+                      {["fullstack", "backend", "frontend", "devops", "design", "qa"].map(role => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                    {resources.length > 1 && (
+                      <button
+                        onClick={() => setResources(resources.filter((_, j) => j !== i))}
+                        className="text-gray-400 hover:text-red-500 text-lg leading-none"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={generateTimeline}
+                disabled={!resources.some(r => r.name.trim()) || !startDate}
+                className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                Generar timeline
+              </button>
+              <button
+                onClick={() => router.push(`/projects/${savedProjectId}`)}
+                className="text-gray-500 text-sm hover:text-gray-700 px-3"
+              >
+                Saltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step: Generating Timeline */}
+      {step === "generating-timeline" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900">Armando el timeline...</h2>
+          <p className="text-gray-500 mt-2 text-sm">Asignando features, calculando dependencias y fechas</p>
         </div>
       )}
     </div>
