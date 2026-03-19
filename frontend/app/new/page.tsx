@@ -16,6 +16,7 @@ export default function NewProjectPage() {
   const [step, setStep] = useState<Step>("brief");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState<(() => void) | null>(null);
 
   // Brief
   const [name, setName] = useState("");
@@ -93,6 +94,7 @@ export default function NewProjectPage() {
 
   async function loadEpics(clarifications = history) {
     setLoading(true);
+    setError("");
     try {
       const res = await fetch(`${API}/api/scope/epics`, {
         method: "POST",
@@ -102,9 +104,11 @@ export default function NewProjectPage() {
       const data = await res.json();
       setProposedEpics(data.epics);
       setAcceptedEpics(new Set(data.epics.map((e: Epic) => e.title)));
+      setRetry(null);
       setStep("scope-epics");
     } catch {
-      setError("Error generando epics.");
+      setError("Error generando las areas de trabajo.");
+      setRetry(() => () => loadEpics(clarifications));
     }
     setLoading(false);
   }
@@ -119,6 +123,7 @@ export default function NewProjectPage() {
 
     // Load features for first epic
     setLoading(true);
+    setError("");
     try {
       const res = await fetch(`${API}/api/scope/features`, {
         method: "POST",
@@ -129,9 +134,11 @@ export default function NewProjectPage() {
       setProposedFeatures(data.features);
       setAcceptedFeatures(new Set(data.features.map((f: Feature) => f.title)));
       setCurrentEpicIndex(0);
+      setRetry(null);
       setStep("scope-features");
     } catch {
       setError("Error generando features.");
+      setRetry(() => () => confirmEpics());
     }
     setLoading(false);
   }
@@ -215,7 +222,19 @@ export default function NewProjectPage() {
         })}
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-lg flex items-center justify-between gap-4">
+          <p className="text-red-600 text-sm">{error}</p>
+          {retry && (
+            <button
+              onClick={() => { setError(""); retry(); }}
+              className="text-sm font-medium text-red-600 border border-red-300 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors whitespace-nowrap"
+            >
+              Intentar de nuevo
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Step: Brief */}
       {step === "brief" && (
