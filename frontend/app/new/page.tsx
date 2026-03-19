@@ -188,6 +188,7 @@ export default function NewProjectPage() {
 
   async function generatePlan(scope = acceptedScope, decisions = allDecisions) {
     setStep("generating");
+    setError("");
     try {
       const res = await fetch(`${API}/api/projects`, {
         method: "POST",
@@ -202,8 +203,9 @@ export default function NewProjectPage() {
       });
       const data = await res.json();
       router.push(`/projects/${data.project_id}`);
-    } catch {
-      setError("Error generando el plan.");
+    } catch (e) {
+      setError("Error generando el plan: " + (e instanceof Error ? e.message : String(e)));
+      setRetry(() => () => generatePlan(scope, decisions));
       setStep("scope-features");
     }
   }
