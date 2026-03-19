@@ -103,7 +103,8 @@ def propose_epics(req: ProposeEpicsRequest):
 
     epics = []
     for line in text.split("\n"):
-        match = re.match(r'\[([A-Z])\]\s+(.+?)(?:\s+-\s+(.+))?$', line.strip())
+        clean = re.sub(r'\*+', '', line.strip())  # remove markdown bold
+        match = re.match(r'\[([A-Z])\]\s+(.+?)(?:\s+-\s+(.+))?$', clean)
         if match:
             epics.append({
                 "key": match.group(1),
@@ -127,7 +128,8 @@ def propose_features(req: ProposeFeaturesRequest):
 
     features = []
     for line in text.split("\n"):
-        match = re.match(r'\[(\d+)\]\s+(.+?)(?:\s+-\s+(.+?))?(?:\s+\((must-have|should-have|could-have)\))?$', line.strip())
+        clean = re.sub(r'\*+', '', line.strip())
+        match = re.match(r'\[(\d+)\]\s+(.+?)(?:\s+-\s+(.+?))?(?:\s+\((must-have|should-have|could-have)\))?$', clean)
         if match:
             features.append({
                 "title": match.group(2).strip(),
