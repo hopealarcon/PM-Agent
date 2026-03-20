@@ -104,7 +104,7 @@ def clarify(req: ClarifyRequest):
     prompt = build_clarification_prompt(req.brief, req.history, round_num)
 
     response = claude.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=CLARIFY_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
@@ -121,7 +121,7 @@ def clarify(req: ClarifyRequest):
 def propose_epics(req: ProposeEpicsRequest):
     prompt = build_epics_prompt(req.brief, req.clarifications, req.document_context or "")
     response = claude.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=SCOPE_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
@@ -146,7 +146,7 @@ def propose_epics(req: ProposeEpicsRequest):
 def propose_features(req: ProposeFeaturesRequest):
     prompt = build_features_prompt(req.epic_title, req.brief, req.clarifications, req.document_context or "")
     response = claude.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=SCOPE_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
@@ -297,7 +297,7 @@ def analyze_releases(req: AnalyzeReleasesRequest):
     prompt = build_release_analysis_prompt(req.releases)
     try:
         response = claude.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-haiku-4-5-20251001",
             max_tokens=8000,
             system="Responde SIEMPRE con JSON valido y completo. Sin comentarios, sin texto adicional, sin trailing commas. Cierra todos los brackets y llaves correctamente.",
             messages=[{"role": "user", "content": prompt}]
