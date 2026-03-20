@@ -298,6 +298,7 @@ export default function NewProjectPage() {
       {/* Step: Brief */}
       {step === "brief" && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <button onClick={() => router.back()} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
           <h2 className="text-xl font-semibold mb-1">Nuevo proyecto</h2>
           <p className="text-gray-500 text-sm mb-6">Describeme el proyecto y yo me encargo del resto</p>
           <div className="space-y-4">
@@ -361,6 +362,7 @@ export default function NewProjectPage() {
       {/* Step: Clarify */}
       {step === "clarify" && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <button onClick={() => { setHistory([]); setCurrentAnswer(""); setStep("brief"); }} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
           <h2 className="text-xl font-semibold mb-1">Algunas preguntas</h2>
           <p className="text-gray-500 text-sm mb-6">Ronda {history.length + 1} de 3</p>
 
@@ -403,6 +405,7 @@ export default function NewProjectPage() {
       {/* Step: Scope Epics */}
       {step === "scope-epics" && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <button onClick={() => setStep(history.length > 0 ? "clarify" : "brief")} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
           <h2 className="text-xl font-semibold mb-1">Areas de trabajo</h2>
           <p className="text-gray-500 text-sm mb-6">Selecciona las areas que quieres incluir en el proyecto</p>
           <div className="space-y-2 mb-6">
@@ -438,6 +441,7 @@ export default function NewProjectPage() {
       {/* Step: Scope Features */}
       {step === "scope-features" && currentEpic && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <button onClick={() => { setCurrentEpicIndex(0); setAcceptedScope({}); setAllDecisions([]); setStep("scope-epics"); }} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-xl font-semibold">{currentEpic.title}</h2>
             <span className="text-sm text-gray-400">{currentEpicIndex + 1} / {acceptedEpicsList.length}</span>
@@ -490,6 +494,7 @@ export default function NewProjectPage() {
       {/* Step: Resources */}
       {step === "resources" && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <button onClick={() => router.push(`/projects/${savedProjectId}`)} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Ver plan</button>
           <h2 className="text-xl font-semibold mb-1">Recursos del equipo</h2>
           <p className="text-gray-500 text-sm mb-6">Dime con quien cuentas y cuando empezamos para armar el timeline</p>
           <div className="space-y-4">
