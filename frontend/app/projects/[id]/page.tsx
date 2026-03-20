@@ -38,12 +38,6 @@ export default async function ProjectPage({ params, searchParams }: {
     );
   }
 
-  const totalHours = plan.epics?.flatMap((e: any) =>
-    e.features?.flatMap((f: any) =>
-      f.tasks?.map((t: any) => t.estimated_hours || 0) ?? []
-    ) ?? []
-  ).reduce((a: number, b: number) => a + b, 0) ?? 0;
-
   const hasTimeline = timeline?.entries?.length > 0;
 
   return (
