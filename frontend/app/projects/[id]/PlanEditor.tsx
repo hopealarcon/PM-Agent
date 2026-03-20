@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -13,178 +13,263 @@ const priorityColor: Record<string, string> = {
 const riskColor: Record<string, string> = {
   low: "text-green-600", medium: "text-yellow-600", high: "text-red-600",
 };
-
-type EditKey = string; // `${table}:${id}:${field}`
-type SaveState = "idle" | "saving" | "saved";
+const priorities = ["must-have", "should-have", "could-have", "wont-have"];
+const roles = ["backend", "frontend", "fullstack", "devops", "design", "qa"];
+const levels = ["low", "medium", "high"];
 
 interface Props { plan: any }
 
 export default function PlanEditor({ plan: initialPlan }: Props) {
   const [plan, setPlan] = useState(initialPlan);
-  const [saveState, setSaveState] = useState<Record<EditKey, SaveState>>({});
-  const [editingKey, setEditingKey] = useState<EditKey | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
-
-  const startEdit = (key: EditKey, current: string) => {
-    setEditingKey(key);
-    setEditValue(current ?? "");
-    setTimeout(() => (inputRef.current as HTMLElement)?.focus(), 0);
-  };
-
-  const save = useCallback(async (key: EditKey, value: string) => {
-    if (key === editingKey) setEditingKey(null);
-    const [table, id, field] = key.split(":");
-    const original = value;
-
-    // Optimistic update
-    setPlan((prev: any) => applyUpdate(prev, table, id, field, value));
-    setSaveState(s => ({ ...s, [key]: "saving" }));
-
-    try {
-      await fetch(`${API}/api/update`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, id, fields: { [field]: field === "estimated_hours" ? Number(value) : value } }),
-      });
-      setSaveState(s => ({ ...s, [key]: "saved" }));
-      setTimeout(() => setSaveState(s => { const n = { ...s }; delete n[key]; return n; }), 2000);
-    } catch {
-      setSaveState(s => ({ ...s, [key]: "idle" }));
-      setPlan((prev: any) => applyUpdate(prev, table, id, field, original));
-    }
-  }, [editingKey]);
-
-  const handleKeyDown = (e: React.KeyboardEvent, key: EditKey) => {
-    if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement)) save(key, editValue);
-    if (e.key === "Escape") setEditingKey(null);
-  };
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const totalHours = plan.epics?.flatMap((e: any) =>
-    e.features?.flatMap((f: any) => f.tasks?.map((t: any) => t.estimated_hours || 0) ?? []) ?? []
+    e.features?.flatMap((f: any) => f.tasks?.map((t: any) => Number(t.estimated_hours) || 0) ?? []) ?? []
   ).reduce((a: number, b: number) => a + b, 0) ?? 0;
+
+  function startEditing() {
+    setDraft(JSON.parse(JSON.stringify(plan)));
+    setEditing(true);
+    setError("");
+  }
+
+  function cancelEditing() {
+    setDraft(null);
+    setEditing(false);
+    setError("");
+  }
+
+  async function saveChanges() {
+    setSaving(true);
+    setError("");
+    const updates: { table: string; id: string; fields: Record<string, any> }[] = [];
+
+    // Diff epics
+    for (const epic of draft.epics ?? []) {
+      const orig = plan.epics?.find((e: any) => e.id === epic.id);
+      const changed: Record<string, any> = {};
+      if (orig?.title !== epic.title) changed.title = epic.title;
+      if (orig?.priority !== epic.priority) changed.priority = epic.priority;
+      if (orig?.estimated_effort !== epic.estimated_effort) changed.estimated_effort = epic.estimated_effort;
+      if (Object.keys(changed).length) updates.push({ table: "epics", id: epic.id, fields: changed });
+
+      for (const feat of epic.features ?? []) {
+        const origF = orig?.features?.find((f: any) => f.id === feat.id);
+        const changedF: Record<string, any> = {};
+        if (origF?.title !== feat.title) changedF.title = feat.title;
+        if (origF?.description !== feat.description) changedF.description = feat.description;
+        if (origF?.priority !== feat.priority) changedF.priority = feat.priority;
+        if (Object.keys(changedF).length) updates.push({ table: "features", id: feat.id, fields: changedF });
+
+        for (const task of feat.tasks ?? []) {
+          const origT = origF?.tasks?.find((t: any) => t.id === task.id);
+          const changedT: Record<string, any> = {};
+          if (origT?.title !== task.title) changedT.title = task.title;
+          if (origT?.role !== task.role) changedT.role = task.role;
+          if (Number(origT?.estimated_hours) !== Number(task.estimated_hours)) changedT.estimated_hours = Number(task.estimated_hours);
+          if (Object.keys(changedT).length) updates.push({ table: "tasks", id: task.id, fields: changedT });
+        }
+      }
+    }
+    // Diff milestones
+    for (const m of draft.milestones ?? []) {
+      const orig = plan.milestones?.find((x: any) => x.id === m.id);
+      const changed: Record<string, any> = {};
+      if (orig?.name !== m.name) changed.name = m.name;
+      if (orig?.target_date !== m.target_date) changed.target_date = m.target_date;
+      if (Object.keys(changed).length) updates.push({ table: "milestones", id: m.id, fields: changed });
+    }
+    // Diff risks
+    for (const r of draft.risks ?? []) {
+      const orig = plan.risks?.find((x: any) => x.id === r.id);
+      const changed: Record<string, any> = {};
+      if (orig?.title !== r.title) changed.title = r.title;
+      if (orig?.mitigation !== r.mitigation) changed.mitigation = r.mitigation;
+      if (orig?.probability !== r.probability) changed.probability = r.probability;
+      if (orig?.impact !== r.impact) changed.impact = r.impact;
+      if (Object.keys(changed).length) updates.push({ table: "risks", id: r.id, fields: changed });
+    }
+
+    try {
+      await Promise.all(updates.map(u =>
+        fetch(`${API}/api/update`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(u),
+        }).then(r => { if (!r.ok) throw new Error("Error guardando"); })
+      ));
+      setPlan(draft);
+      setEditing(false);
+      setDraft(null);
+    } catch (e) {
+      setError("Error guardando cambios. Intenta de nuevo.");
+    }
+    setSaving(false);
+  }
+
+  function setField(path: (string | number)[], value: any) {
+    setDraft((prev: any) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      let cur = next;
+      for (let i = 0; i < path.length - 1; i++) cur = cur[path[i]];
+      cur[path[path.length - 1]] = value;
+      return next;
+    });
+  }
+
+  const data = editing ? draft : plan;
 
   return (
     <div>
-      <p className="text-gray-500 text-sm mt-1 mb-8">
-        v{plan.version} · Confianza: <span className="font-medium">{plan.confidence_level}</span> · {totalHours}h estimadas
-        <span className="ml-2 text-xs text-gray-400">· Click en cualquier campo para editar</span>
-      </p>
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-gray-500 text-sm">
+          v{plan.version} · Confianza: <span className="font-medium">{plan.confidence_level}</span> · {totalHours}h estimadas
+        </p>
+        {!editing ? (
+          <button
+            onClick={startEditing}
+            className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828A2 2 0 0110 16H8v-2a2 2 0 01.586-1.414z" />
+            </svg>
+            Editar
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <button
+              onClick={cancelEditing}
+              disabled={saving}
+              className="text-sm text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={saveChanges}
+              disabled={saving}
+              className="text-sm font-medium text-white bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Epics */}
       <section className="mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Epics y features</h2>
         <div className="space-y-4">
-          {plan.epics?.map((epic: any) => {
-            const epicHours = epic.features?.flatMap((f: any) => f.tasks?.map((t: any) => t.estimated_hours || 0) ?? []).reduce((a: number, b: number) => a + b, 0) ?? 0;
+          {data.epics?.map((epic: any, ei: number) => {
+            const epicHours = epic.features?.flatMap((f: any) => f.tasks?.map((t: any) => Number(t.estimated_hours) || 0) ?? []).reduce((a: number, b: number) => a + b, 0) ?? 0;
             return (
               <div key={epic.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <InlineSelect
-                      value={epic.priority}
-                      options={["must-have", "should-have", "could-have", "wont-have"]}
-                      className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor[epic.priority] || "bg-gray-50 text-gray-500"}`}
-                      onChange={v => save(`epics:${epic.id}:priority`, v)}
-                      saveState={saveState[`epics:${epic.id}:priority`]}
-                    />
-                    <InlineText
-                      value={epic.title}
-                      editingKey={`epics:${epic.id}:title`}
-                      activeKey={editingKey}
-                      editValue={editValue}
-                      saveState={saveState[`epics:${epic.id}:title`]}
-                      className="font-semibold text-gray-900"
-                      onStart={startEdit}
-                      onChange={setEditValue}
-                      onSave={save}
-                      onKeyDown={handleKeyDown}
-                      inputRef={inputRef}
-                    />
+                    {editing ? (
+                      <select
+                        value={epic.priority}
+                        onChange={e => setField(["epics", ei, "priority"], e.target.value)}
+                        className={`text-xs px-2 py-0.5 rounded font-medium border border-gray-200 ${priorityColor[epic.priority] || ""}`}
+                      >
+                        {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    ) : (
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor[epic.priority] || "bg-gray-50 text-gray-500"}`}>{epic.priority}</span>
+                    )}
+                    {editing ? (
+                      <input
+                        value={epic.title}
+                        onChange={e => setField(["epics", ei, "title"], e.target.value)}
+                        className="flex-1 font-semibold text-gray-900 border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    ) : (
+                      <h3 className="font-semibold text-gray-900">{epic.title}</h3>
+                    )}
                   </div>
-                  <span className="text-sm text-gray-400 ml-4 flex-shrink-0">{epicHours}h</span>
+                  <span className="text-sm text-gray-400 flex-shrink-0">{epicHours}h</span>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {epic.features?.map((feat: any) => {
-                    const featHours = feat.tasks?.reduce((a: number, t: any) => a + (t.estimated_hours || 0), 0) ?? 0;
+                  {epic.features?.map((feat: any, fi: number) => {
+                    const featHours = feat.tasks?.reduce((a: number, t: any) => a + (Number(t.estimated_hours) || 0), 0) ?? 0;
                     return (
                       <div key={feat.id} className="px-5 py-3">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <InlineText
-                                value={feat.title}
-                                editingKey={`features:${feat.id}:title`}
-                                activeKey={editingKey}
-                                editValue={editValue}
-                                saveState={saveState[`features:${feat.id}:title`]}
-                                className="text-sm font-medium text-gray-800"
-                                onStart={startEdit}
-                                onChange={setEditValue}
-                                onSave={save}
-                                onKeyDown={handleKeyDown}
-                                inputRef={inputRef}
-                              />
-                              <InlineSelect
-                                value={feat.priority}
-                                options={["must-have", "should-have", "could-have", "wont-have"]}
-                                className={`text-xs px-1.5 py-0.5 rounded font-medium ${priorityColor[feat.priority] || ""}`}
-                                onChange={v => save(`features:${feat.id}:priority`, v)}
-                                saveState={saveState[`features:${feat.id}:priority`]}
-                              />
+                              {editing ? (
+                                <input
+                                  value={feat.title}
+                                  onChange={e => setField(["epics", ei, "features", fi, "title"], e.target.value)}
+                                  className="text-sm font-medium text-gray-800 border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                              ) : (
+                                <span className="text-sm font-medium text-gray-800">{feat.title}</span>
+                              )}
+                              {editing ? (
+                                <select
+                                  value={feat.priority}
+                                  onChange={e => setField(["epics", ei, "features", fi, "priority"], e.target.value)}
+                                  className={`text-xs px-1.5 py-0.5 rounded font-medium border border-gray-200 ${priorityColor[feat.priority] || ""}`}
+                                >
+                                  {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                              ) : (
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${priorityColor[feat.priority] || ""}`}>{feat.priority}</span>
+                              )}
                             </div>
-                            <InlineText
-                              value={feat.description || ""}
-                              editingKey={`features:${feat.id}:description`}
-                              activeKey={editingKey}
-                              editValue={editValue}
-                              saveState={saveState[`features:${feat.id}:description`]}
-                              className="text-xs text-gray-500 mt-0.5"
-                              placeholder="Agregar descripcion..."
-                              onStart={startEdit}
-                              onChange={setEditValue}
-                              onSave={save}
-                              onKeyDown={handleKeyDown}
-                              inputRef={inputRef}
-                            />
+                            {editing ? (
+                              <input
+                                value={feat.description || ""}
+                                onChange={e => setField(["epics", ei, "features", fi, "description"], e.target.value)}
+                                placeholder="Descripcion..."
+                                className="mt-1 w-full text-xs text-gray-500 border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              />
+                            ) : (
+                              feat.description && <p className="text-xs text-gray-500 mt-0.5">{feat.description}</p>
+                            )}
                             {feat.tasks?.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                {feat.tasks.map((task: any) => (
+                              <div className="mt-2 space-y-1.5">
+                                {feat.tasks.map((task: any, ti: number) => (
                                   <div key={task.id} className="flex items-center gap-2 text-xs text-gray-500">
                                     <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-                                    <InlineText
-                                      value={task.title}
-                                      editingKey={`tasks:${task.id}:title`}
-                                      activeKey={editingKey}
-                                      editValue={editValue}
-                                      saveState={saveState[`tasks:${task.id}:title`]}
-                                      className="flex-1"
-                                      onStart={startEdit}
-                                      onChange={setEditValue}
-                                      onSave={save}
-                                      onKeyDown={handleKeyDown}
-                                      inputRef={inputRef}
-                                    />
-                                    <InlineSelect
-                                      value={task.role || "fullstack"}
-                                      options={["backend", "frontend", "fullstack", "devops", "design", "qa"]}
-                                      className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-400"
-                                      onChange={v => save(`tasks:${task.id}:role`, v)}
-                                      saveState={saveState[`tasks:${task.id}:role`]}
-                                    />
-                                    <InlineNumber
-                                      value={task.estimated_hours ?? 0}
-                                      editingKey={`tasks:${task.id}:estimated_hours`}
-                                      activeKey={editingKey}
-                                      editValue={editValue}
-                                      saveState={saveState[`tasks:${task.id}:estimated_hours`]}
-                                      suffix="h"
-                                      onStart={startEdit}
-                                      onChange={setEditValue}
-                                      onSave={save}
-                                      onKeyDown={handleKeyDown}
-                                      inputRef={inputRef}
-                                    />
+                                    {editing ? (
+                                      <input
+                                        value={task.title}
+                                        onChange={e => setField(["epics", ei, "features", fi, "tasks", ti, "title"], e.target.value)}
+                                        className="flex-1 border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                      />
+                                    ) : (
+                                      <span className="flex-1">{task.title}</span>
+                                    )}
+                                    {editing ? (
+                                      <select
+                                        value={task.role || "fullstack"}
+                                        onChange={e => setField(["epics", ei, "features", fi, "tasks", ti, "role"], e.target.value)}
+                                        className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 border border-gray-200 focus:outline-none"
+                                      >
+                                        {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                                      </select>
+                                    ) : (
+                                      task.role && <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-400">{task.role}</span>
+                                    )}
+                                    {editing ? (
+                                      <div className="flex items-center gap-0.5 ml-auto">
+                                        <input
+                                          type="number"
+                                          value={task.estimated_hours ?? 0}
+                                          onChange={e => setField(["epics", ei, "features", fi, "tasks", ti, "estimated_hours"], e.target.value)}
+                                          className="w-14 border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-right"
+                                        />
+                                        <span className="text-gray-400">h</span>
+                                      </div>
+                                    ) : (
+                                      task.estimated_hours != null && <span className="ml-auto">{task.estimated_hours}h</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -203,40 +288,32 @@ export default function PlanEditor({ plan: initialPlan }: Props) {
       </section>
 
       {/* Milestones */}
-      {plan.milestones?.length > 0 && (
+      {data.milestones?.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Milestones</h2>
           <div className="grid gap-3">
-            {plan.milestones.map((m: any) => (
+            {data.milestones.map((m: any, mi: number) => (
               <div key={m.id} className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <InlineText
-                    value={m.name}
-                    editingKey={`milestones:${m.id}:name`}
-                    activeKey={editingKey}
-                    editValue={editValue}
-                    saveState={saveState[`milestones:${m.id}:name`]}
-                    className="font-medium text-gray-900"
-                    onStart={startEdit}
-                    onChange={setEditValue}
-                    onSave={save}
-                    onKeyDown={handleKeyDown}
-                    inputRef={inputRef}
-                  />
-                  <InlineText
-                    value={m.target_date || ""}
-                    editingKey={`milestones:${m.id}:target_date`}
-                    activeKey={editingKey}
-                    editValue={editValue}
-                    saveState={saveState[`milestones:${m.id}:target_date`]}
-                    className="text-sm text-gray-400"
-                    placeholder="Fecha..."
-                    onStart={startEdit}
-                    onChange={setEditValue}
-                    onSave={save}
-                    onKeyDown={handleKeyDown}
-                    inputRef={inputRef}
-                  />
+                  {editing ? (
+                    <input
+                      value={m.name}
+                      onChange={e => setField(["milestones", mi, "name"], e.target.value)}
+                      className="font-medium text-gray-900 border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1"
+                    />
+                  ) : (
+                    <h3 className="font-medium text-gray-900">{m.name}</h3>
+                  )}
+                  {editing ? (
+                    <input
+                      value={m.target_date || ""}
+                      onChange={e => setField(["milestones", mi, "target_date"], e.target.value)}
+                      placeholder="Ej: Semana 4"
+                      className="text-sm text-gray-400 border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 w-32"
+                    />
+                  ) : (
+                    m.target_date && <span className="text-sm text-gray-400">{m.target_date}</span>
+                  )}
                 </div>
                 {m.gate_criteria?.length > 0 && (
                   <ul className="mt-2 space-y-1">
@@ -254,62 +331,62 @@ export default function PlanEditor({ plan: initialPlan }: Props) {
       )}
 
       {/* Risks */}
-      {plan.risks?.length > 0 && (
-        <section>
+      {data.risks?.length > 0 && (
+        <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Riesgos</h2>
           <div className="grid gap-3">
-            {plan.risks.map((r: any) => (
+            {data.risks.map((r: any, ri: number) => (
               <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <InlineText
-                      value={r.title}
-                      editingKey={`risks:${r.id}:title`}
-                      activeKey={editingKey}
-                      editValue={editValue}
-                      saveState={saveState[`risks:${r.id}:title`]}
-                      className="font-medium text-gray-900"
-                      onStart={startEdit}
-                      onChange={setEditValue}
-                      onSave={save}
-                      onKeyDown={handleKeyDown}
-                      inputRef={inputRef}
-                    />
-                    <InlineText
-                      value={r.mitigation || ""}
-                      editingKey={`risks:${r.id}:mitigation`}
-                      activeKey={editingKey}
-                      editValue={editValue}
-                      saveState={saveState[`risks:${r.id}:mitigation`]}
-                      className="text-sm text-gray-500 mt-1"
-                      placeholder="Agregar mitigacion..."
-                      onStart={startEdit}
-                      onChange={setEditValue}
-                      onSave={save}
-                      onKeyDown={handleKeyDown}
-                      inputRef={inputRef}
-                    />
+                    {editing ? (
+                      <input
+                        value={r.title}
+                        onChange={e => setField(["risks", ri, "title"], e.target.value)}
+                        className="font-medium text-gray-900 border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full"
+                      />
+                    ) : (
+                      <h3 className="font-medium text-gray-900">{r.title}</h3>
+                    )}
+                    {editing ? (
+                      <input
+                        value={r.mitigation || ""}
+                        onChange={e => setField(["risks", ri, "mitigation"], e.target.value)}
+                        placeholder="Mitigacion..."
+                        className="mt-1 text-sm text-gray-500 border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full"
+                      />
+                    ) : (
+                      r.mitigation && <p className="text-sm text-gray-500 mt-1">{r.mitigation}</p>
+                    )}
                   </div>
                   <div className="text-xs flex-shrink-0 text-right space-y-1">
                     <div className="flex items-center gap-1 justify-end">
                       <span className="text-gray-400">Prob:</span>
-                      <InlineSelect
-                        value={r.probability}
-                        options={["low", "medium", "high"]}
-                        className={`font-medium ${riskColor[r.probability]}`}
-                        onChange={v => save(`risks:${r.id}:probability`, v)}
-                        saveState={saveState[`risks:${r.id}:probability`]}
-                      />
+                      {editing ? (
+                        <select
+                          value={r.probability}
+                          onChange={e => setField(["risks", ri, "probability"], e.target.value)}
+                          className={`font-medium border border-gray-200 rounded px-1 focus:outline-none ${riskColor[r.probability]}`}
+                        >
+                          {levels.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      ) : (
+                        <span className={`font-medium ${riskColor[r.probability]}`}>{r.probability}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 justify-end">
                       <span className="text-gray-400">Impacto:</span>
-                      <InlineSelect
-                        value={r.impact}
-                        options={["low", "medium", "high"]}
-                        className={`font-medium ${riskColor[r.impact]}`}
-                        onChange={v => save(`risks:${r.id}:impact`, v)}
-                        saveState={saveState[`risks:${r.id}:impact`]}
-                      />
+                      {editing ? (
+                        <select
+                          value={r.impact}
+                          onChange={e => setField(["risks", ri, "impact"], e.target.value)}
+                          className={`font-medium border border-gray-200 rounded px-1 focus:outline-none ${riskColor[r.impact]}`}
+                        >
+                          {levels.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      ) : (
+                        <span className={`font-medium ${riskColor[r.impact]}`}>{r.impact}</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -318,139 +395,25 @@ export default function PlanEditor({ plan: initialPlan }: Props) {
           </div>
         </section>
       )}
+
+      {/* Save bar at bottom when editing */}
+      {editing && (
+        <div className="sticky bottom-4 flex justify-end gap-2 pt-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <button onClick={cancelEditing} disabled={saving} className="text-sm text-gray-500 hover:text-gray-700">
+              Cancelar
+            </button>
+            <button
+              onClick={saveChanges}
+              disabled={saving}
+              className="text-sm font-medium text-white bg-indigo-600 px-4 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
-
-// ---- Helper: apply optimistic update to nested plan state ----
-function applyUpdate(plan: any, table: string, id: string, field: string, value: string) {
-  const update = (arr: any[]) => arr?.map(item => item.id === id ? { ...item, [field]: value } : item);
-  if (table === "epics") return { ...plan, epics: update(plan.epics) };
-  if (table === "milestones") return { ...plan, milestones: update(plan.milestones) };
-  if (table === "risks") return { ...plan, risks: update(plan.risks) };
-  if (table === "features") return {
-    ...plan, epics: plan.epics?.map((e: any) => ({ ...e, features: update(e.features) }))
-  };
-  if (table === "tasks") return {
-    ...plan, epics: plan.epics?.map((e: any) => ({
-      ...e, features: e.features?.map((f: any) => ({ ...f, tasks: update(f.tasks) }))
-    }))
-  };
-  return plan;
-}
-
-// ---- Inline edit components ----
-
-function SaveBadge({ state }: { state?: SaveState }) {
-  if (state === "saving") return <span className="text-xs text-gray-400 ml-1">...</span>;
-  if (state === "saved") return <span className="text-xs text-green-500 ml-1">✓</span>;
-  return null;
-}
-
-interface InlineTextProps {
-  value: string;
-  editingKey: string;
-  activeKey: string | null;
-  editValue: string;
-  saveState?: SaveState;
-  className?: string;
-  placeholder?: string;
-  onStart: (key: string, value: string) => void;
-  onChange: (v: string) => void;
-  onSave: (key: string, value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent, key: string) => void;
-  inputRef: React.MutableRefObject<any>;
-}
-
-function InlineText({ value, editingKey, activeKey, editValue, saveState, className, placeholder, onStart, onChange, onSave, onKeyDown, inputRef }: InlineTextProps) {
-  const isEditing = activeKey === editingKey;
-  if (isEditing) {
-    return (
-      <input
-        ref={el => { if (el) inputRef.current = el; }}
-        value={editValue}
-        onChange={e => onChange(e.target.value)}
-        onBlur={() => onSave(editingKey, editValue)}
-        onKeyDown={e => onKeyDown(e, editingKey)}
-        className={`border-b border-indigo-400 outline-none bg-transparent ${className}`}
-        style={{ minWidth: "4rem" }}
-      />
-    );
-  }
-  return (
-    <span className="group inline-flex items-center gap-1">
-      <span
-        onClick={() => onStart(editingKey, value)}
-        className={`cursor-text hover:bg-indigo-50 rounded px-0.5 -mx-0.5 transition-colors ${className} ${!value ? "text-gray-300 italic" : ""}`}
-      >
-        {value || placeholder || "—"}
-      </span>
-      <SaveBadge state={saveState} />
-    </span>
-  );
-}
-
-interface InlineNumberProps {
-  value: number;
-  editingKey: string;
-  activeKey: string | null;
-  editValue: string;
-  saveState?: SaveState;
-  suffix?: string;
-  onStart: (key: string, value: string) => void;
-  onChange: (v: string) => void;
-  onSave: (key: string, value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent, key: string) => void;
-  inputRef: React.MutableRefObject<any>;
-}
-
-function InlineNumber({ value, editingKey, activeKey, editValue, saveState, suffix, onStart, onChange, onSave, onKeyDown, inputRef }: InlineNumberProps) {
-  const isEditing = activeKey === editingKey;
-  if (isEditing) {
-    return (
-      <input
-        ref={el => { if (el) inputRef.current = el; }}
-        type="number"
-        value={editValue}
-        onChange={e => onChange(e.target.value)}
-        onBlur={() => onSave(editingKey, editValue)}
-        onKeyDown={e => onKeyDown(e, editingKey)}
-        className="border-b border-indigo-400 outline-none bg-transparent w-12 text-xs"
-      />
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-0.5">
-      <span
-        onClick={() => onStart(editingKey, String(value))}
-        className="cursor-text hover:bg-indigo-50 rounded px-0.5 transition-colors ml-auto"
-      >
-        {value}{suffix}
-      </span>
-      <SaveBadge state={saveState} />
-    </span>
-  );
-}
-
-interface InlineSelectProps {
-  value: string;
-  options: string[];
-  className?: string;
-  onChange: (v: string) => void;
-  saveState?: SaveState;
-}
-
-function InlineSelect({ value, options, className, onChange, saveState }: InlineSelectProps) {
-  return (
-    <span className="inline-flex items-center gap-0.5">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={`cursor-pointer bg-transparent border-none outline-none appearance-none ${className}`}
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <SaveBadge state={saveState} />
-    </span>
   );
 }
