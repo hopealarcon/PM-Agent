@@ -66,6 +66,11 @@ class TimelineRequest(BaseModel):
     resources: list[dict]
     start_date: str
 
+class UpdateRecordRequest(BaseModel):
+    table: str
+    id: str
+    fields: dict
+
 
 class AnalyzeReleasesRequest(BaseModel):
     releases: list[dict]  # [{name, description, raw_tasks}]
@@ -199,6 +204,20 @@ def generate_and_save(req: GeneratePlanRequest):
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     return {"project_id": project_id}
+
+
+@app.patch("/api/update")
+def update_record(req: UpdateRecordRequest):
+    allowed = {"epics", "features", "tasks", "milestones", "risks"}
+    if req.table not in allowed:
+        raise HTTPException(status_code=400, detail="Tabla no permitida")
+    try:
+        from db.client import get_client
+        client = get_client()
+        client.update(req.table, req.id, req.fields)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error actualizando: {e}")
+    return {"ok": True}
 
 
 @app.post("/api/timeline/{project_id}")

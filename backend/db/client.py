@@ -21,6 +21,18 @@ class SupabaseClient:
             raise Exception(f"{res.status_code} on {table}: {res.text}")
         return res.json()[0]
 
+    def update(self, table: str, id: str, data: dict) -> dict:
+        res = requests.patch(
+            f"{self.base_url}/{table}",
+            params={"id": f"eq.{id}"},
+            json=data,
+            headers=self.headers,
+        )
+        if not res.ok:
+            raise Exception(f"{res.status_code} on {table}: {res.text}")
+        result = res.json()
+        return result[0] if result else {}
+
     def insert_many(self, table: str, data: list) -> list:
         res = requests.post(f"{self.base_url}/{table}", json=data, headers=self.headers)
         res.raise_for_status()
