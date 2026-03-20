@@ -279,13 +279,16 @@ def analyze_releases(req: AnalyzeReleasesRequest):
     try:
         response = claude.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=4000,
+            max_tokens=8000,
+            system="Responde SIEMPRE con JSON valido y completo. Sin comentarios, sin texto adicional, sin trailing commas. Cierra todos los brackets y llaves correctamente.",
             messages=[{"role": "user", "content": prompt}]
         )
         text = response.content[0].text.strip()
         text = re.sub(r'^```[a-z]*\n?', '', text)
         text = re.sub(r'\n?```$', '', text)
         data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Error analizando releases: JSON invalido - {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analizando releases: {e}")
 
